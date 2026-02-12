@@ -1,0 +1,31 @@
+name: co_run
+description: "Gamified GPS running app where runners claim territory."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^2.14.0
+  firebase_auth: ^4.6.3
+  cloud_firestore: ^4.8.1
+  google_maps_flutter: ^2.2.6
+  geolocator: ^9.0.2
+  provider: ^6.0.5
+  intl: ^0.18.1
+  uuid: ^3.0.7
+  shared_preferences: ^2.1.1
+  google_fonts: ^5.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
