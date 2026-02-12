@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:co_run/services/auth_service.dart';
-import 'package:co_run/screens/auth/register_screen.dart';
 import 'package:provider/provider.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -19,6 +18,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Create Account'),
+        elevation: 0,
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -29,13 +32,13 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'coRun',
+                  'Join the Run',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 48,
+                    fontSize: 32,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF00FF88),
-                    letterSpacing: 2,
+                    letterSpacing: 1.5,
                   ),
                 ),
                 const SizedBox(height: 48),
@@ -67,40 +70,30 @@ class _LoginScreenState extends State<LoginScreen> {
                             setState(() => _isLoading = true);
                             final auth =
                                 Provider.of<AuthService>(context, listen: false);
-                            final user = await auth.signInWithEmail(
+                            final user = await auth.registerWithEmail(
                               _emailController.text,
                               _passwordController.text,
                             );
                             if (user == null) {
-                              if (mounted) {
-                                setState(() {
-                                  _isLoading = false;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text('Could not sign in.')),
-                                  );
-                                });
-                              }
+                              setState(() {
+                                _isLoading = false;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Could not register. Email might be in use.')),
+                                );
+                              });
+                            } else {
+                              // Successful registration, pop to allow Wrapper to navigate to Home
+                              if (mounted) Navigator.pop(context);
                             }
-                            // Wrapper handles navigation
                           }
                         },
                   child: _isLoading
                       ? const SizedBox(
-                          height: 20, width: 20,
+                          height: 20, width: 20, 
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black)
                         )
-                      : const Text('LOGIN'),
-                ),
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const RegisterScreen()),
-                    );
-                  },
-                  child: const Text('Create Account'),
+                      : const Text('REGISTER'),
                 ),
               ],
             ),

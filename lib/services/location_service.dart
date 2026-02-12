@@ -6,14 +6,28 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 class LocationService with ChangeNotifier {
   bool _isTracking = false;
   List<LatLng> _routeCoords = [];
-  double _distance = 0.0;
+  double _distance = 0.0; // in meters
   DateTime? _startTime;
   Timer? _timer;
   Duration _duration = Duration.zero;
+  StreamSubscription<Position>? _positionStreamSubscription;
 
   bool get isTracking => _isTracking;
-  double get distance => _distance / 1000; // in km
-  double get pace => _distance > 0 ? _duration.inMinutes / (_distance / 1000) : 0;
+  List<LatLng> get route => _routeCoords;
+  Duration get duration => _duration;
+  LatLng? get currentLocation => _routeCoords.isNotEmpty ? _routeCoords.last : null;
+  
+  // Distance in km
+  double get distance => _distance / 1000; 
+  
+  // Pace in min/km
+  double get pace {
+    if (_distance == 0) return 0;
+    double minutes = _duration.inSeconds / 60.0;
+    double km = _distance / 1000.0;
+    return minutes / km;
+  }
+
   String get formattedTime {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final minutes = twoDigits(_duration.inMinutes.remainder(60));
@@ -32,12 +46,33 @@ class LocationService with ChangeNotifier {
     };
   }
 
-  Future<void> startTracking() async {
+  List<LatLng> get routeCoords => _routeCoords;
+  Duration get duration => _duration;
+  double get distanceMeters => _distance;
+
+  // Get current position stream for map camera updates even when not tracking run
+  Stream<Position> get positionStream => Geolocator.getPositionStream(
+    locationSettings: const LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 5,
+    ),
+  );
+
+  Future<bool> requestPermission() async {
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
+      if (permission == LocationPermission.denied) return false;
     }
+    if (permission == LocationPermission.deniedForever) {
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> startTracking() async {
+    bool hasPermission = await requestPermission();
+    if (!hasPermission) return;
 
     _isTracking = true;
     _startTime = DateTime.now();
@@ -45,34 +80,36 @@ class LocationService with ChangeNotifier {
     _distance = 0;
     _duration = Duration.zero;
     
+    // Start Timer
+    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _duration = DateTime.now().difference(_startTime!);
       notifyListeners();
     });
 
-    Geolocator.getPositionStream(
+    // Start GPS Stream
+    await _positionStreamSubscription?.cancel();
+    _positionStreamSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5, // Update every 5 meters
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 3, // Update every 3 meters
       ),
     ).listen((Position position) {
-      if (_isTracking) {
-        final newLatLng = LatLng(position.latitude, position.longitude);
-        
-        if (_routeCoords.isNotEmpty) {
-          _distance += Geolocator.distanceBetween(
-            _routeCoords.last.latitude,
-            _routeCoords.last.longitude,
-            newLatLng.latitude,
-            newLatLng.longitude,
-          );
-        }
-        
-        _routeCoords.add(newLatLng);
-        notifyListeners();
-        
-        // Here you would also update Firestore with the new point to "claim territory"
+      if (!_isTracking) return;
+
+      final newLatLng = LatLng(position.latitude, position.longitude);
+      
+      if (_routeCoords.isNotEmpty) {
+        _distance += Geolocator.distanceBetween(
+          _routeCoords.last.latitude,
+          _routeCoords.last.longitude,
+          newLatLng.latitude,
+          newLatLng.longitude,
+        );
       }
+      
+      _routeCoords.add(newLatLng);
+      notifyListeners();
     });
     
     notifyListeners();
@@ -81,8 +118,15 @@ class LocationService with ChangeNotifier {
   void stopTracking() {
     _isTracking = false;
     _timer?.cancel();
+    _positionStreamSubscription?.cancel();
     notifyListeners();
-    
-    // Save run to Firestore
+    // TODO: Trigger save to Firestore here or via a callback in UI
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _positionStreamSubscription?.cancel();
+    super.dispose();
   }
 }

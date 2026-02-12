@@ -23,7 +23,7 @@ class Wrapper extends StatelessWidget {
           return user == null ? const LoginScreen() : const HomeScreen();
         } else {
           return const Scaffold(
-            body: Center(child: CircularCircularProgressIndicator()),
+            body: Center(child: CircularProgressIndicator()),
           );
         }
       },

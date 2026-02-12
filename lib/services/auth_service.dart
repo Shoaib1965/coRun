@@ -12,6 +12,7 @@ class AuthService with ChangeNotifier {
     try {
       UserCredential result = await _auth.signInWithEmailAndPassword(
           email: email, password: password);
+      notifyListeners();
       return result.user;
     } catch (e) {
       print(e.toString());
@@ -33,6 +34,7 @@ class AuthService with ChangeNotifier {
   Future<void> signOut() async {
     try {
       await _auth.signOut();
+      notifyListeners();
     } catch (e) {
       print(e.toString());
     }
