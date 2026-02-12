@@ -15,9 +15,6 @@ dependencies:
   google_maps_flutter: ^2.2.6
   geolocator: ^9.0.2
   provider: ^6.0.5
-  intl: ^0.18.1
-  uuid: ^3.0.7
-  shared_preferences: ^2.1.1
   google_fonts: ^5.1.0
 
 dev_dependencies:
@@ -27,5 +24,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/images/

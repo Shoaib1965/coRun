@@ -24,6 +24,7 @@ class AuthService with ChangeNotifier {
     try {
       UserCredential result = await _auth.createUserWithEmailAndPassword(
           email: email, password: password);
+      notifyListeners();
       return result.user;
     } catch (e) {
       print(e.toString());

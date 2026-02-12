@@ -12,13 +12,13 @@ class LocationService with ChangeNotifier {
   Duration _duration = Duration.zero;
   StreamSubscription<Position>? _positionStreamSubscription;
 
+  // Getters
   bool get isTracking => _isTracking;
-  List<LatLng> get route => _routeCoords;
+  List<LatLng> get routeCoords => _routeCoords;
   Duration get duration => _duration;
+  double get distanceKm => _distance / 1000.0;
+  double get distanceMeters => _distance;
   LatLng? get currentLocation => _routeCoords.isNotEmpty ? _routeCoords.last : null;
-  
-  // Distance in km
-  double get distance => _distance / 1000; 
   
   // Pace in min/km
   double get pace {
@@ -40,21 +40,20 @@ class LocationService with ChangeNotifier {
       Polyline(
         polylineId: const PolylineId('current_run'),
         color: const Color(0xFF00FF88),
-        width: 5,
+        width: 6,
         points: _routeCoords,
+        jointType: JointType.round,
+        endCap: Cap.roundCap,
+        startCap: Cap.roundCap,
       ),
     };
   }
-
-  List<LatLng> get routeCoords => _routeCoords;
-  Duration get duration => _duration;
-  double get distanceMeters => _distance;
 
   // Get current position stream for map camera updates even when not tracking run
   Stream<Position> get positionStream => Geolocator.getPositionStream(
     locationSettings: const LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 5,
+      distanceFilter: 10,
     ),
   );
 
@@ -65,6 +64,7 @@ class LocationService with ChangeNotifier {
       if (permission == LocationPermission.denied) return false;
     }
     if (permission == LocationPermission.deniedForever) {
+      // TODO: Handle permanently denied (open settings)
       return false;
     }
     return true;
@@ -92,7 +92,7 @@ class LocationService with ChangeNotifier {
     _positionStreamSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 3, // Update every 3 meters
+        distanceFilter: 5, // Update every 5 meters
       ),
     ).listen((Position position) {
       if (!_isTracking) return;
@@ -100,12 +100,13 @@ class LocationService with ChangeNotifier {
       final newLatLng = LatLng(position.latitude, position.longitude);
       
       if (_routeCoords.isNotEmpty) {
-        _distance += Geolocator.distanceBetween(
+        final dist = Geolocator.distanceBetween(
           _routeCoords.last.latitude,
           _routeCoords.last.longitude,
           newLatLng.latitude,
           newLatLng.longitude,
         );
+        _distance += dist;
       }
       
       _routeCoords.add(newLatLng);
@@ -120,7 +121,6 @@ class LocationService with ChangeNotifier {
     _timer?.cancel();
     _positionStreamSubscription?.cancel();
     notifyListeners();
-    // TODO: Trigger save to Firestore here or via a callback in UI
   }
 
   @override

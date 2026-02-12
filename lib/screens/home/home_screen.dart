@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:co_run/services/location_service.dart';
 import 'package:co_run/services/auth_service.dart';
 import 'package:co_run/services/firestore_service.dart';
+import 'package:co_run/utils/map_style.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,10 +17,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   GoogleMapController? _mapController;
-  StreamSubscription<Position>? _positionStreamSubscription;
-  final FirestoreService _firestoreService = FirestoreService();
-  
+  StreamSubscription<List<Territory>>? _territoriesSubscription;
   Set<Polyline> _territoryPolylines = {};
+  bool _isSaving = false;
 
   // Default fallback (Lahore)
   static const CameraPosition _initialPosition = CameraPosition(
@@ -30,22 +30,33 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _locateUser();
-    _listenToTerritories();
+    // Defer initialization to after build to access context/providers safely if needed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _listenToTerritories();
+      _locateUser();
+    });
   }
 
   void _listenToTerritories() {
-    _firestoreService.territories.listen((territories) {
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final currentUserId = authService.currentUser?.uid;
+
+    _territoriesSubscription = firestoreService.territories.listen((territories) {
       if (!mounted) return;
       setState(() {
         _territoryPolylines = territories.map((t) {
-          // Check if it's current user's territory (could add color logic here)
-          // For now, use Neon Green with opacity for everyone, or differentiate
+          final isMine = t.userId == currentUserId;
+          final color = isMine 
+              ? const Color(0xFF00FF88).withOpacity(0.6) // Neon Green for me
+              : _getUserColor(t.userId).withOpacity(0.4); // Hashed color for others
+
           return Polyline(
             polylineId: PolylineId(t.id),
             points: t.points,
-            color: const Color(0xFF00FF88).withOpacity(0.4),
-            width: 8, // Thicker line for "territory" feel
+            color: color,
+            width: isMine ? 8 : 6,
+            zIndex: isMine ? 2 : 1, // Draw mine on top
             jointType: JointType.round,
             endCap: Cap.roundCap,
             startCap: Cap.roundCap,
@@ -53,6 +64,12 @@ class _HomeScreenState extends State<HomeScreen> {
         }).toSet();
       });
     });
+  }
+
+  Color _getUserColor(String userId) {
+    final hash = userId.hashCode;
+    // Generate a consistent color from hash
+    return Colors.primaries[hash % Colors.primaries.length];
   }
 
   Future<void> _locateUser() async {
@@ -68,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _positionStreamSubscription?.cancel();
+    _territoriesSubscription?.cancel();
     super.dispose();
   }
 
@@ -88,6 +105,50 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            const DrawerHeader(
+              decoration: BoxDecoration(color: Color(0xFF1E1E1E)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text('coRun', style: TextStyle(color: Color(0xFF00FF88), fontSize: 32, fontWeight: FontWeight.bold)),
+                  Text('Claim Your City', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.leaderboard),
+              title: const Text('Leaderboard'),
+              onTap: () {
+                Navigator.pop(context);
+                // TODO: Navigate to Leaderboard
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Leaderboard coming soon!')));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('Run History'),
+              onTap: () {
+                Navigator.pop(context);
+                // TODO: Navigate to History
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('History coming soon!')));
+              },
+            ),
+             ListTile(
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
+              title: const Text('Sign Out', style: TextStyle(color: Colors.redAccent)),
+              onTap: () async {
+                Navigator.pop(context);
+                await authService.signOut();
+              },
+            ),
+          ],
+        ),
+      ),
       body: Stack(
         children: [
           GoogleMap(
@@ -99,9 +160,8 @@ class _HomeScreenState extends State<HomeScreen> {
             polylines: allPolylines,
             onMapCreated: (controller) {
               _mapController = controller;
-              _locateUser();
+              controller.setMapStyle(darkMapStyle);
             },
-            style: _mapStyle, 
           ),
           
           SafeArea(
@@ -113,32 +173,33 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'coRun',
-                          style: TextStyle(
-                            color: Color(0xFF00FF88),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 20,
-                            letterSpacing: 1.5,
+                      Builder(
+                        builder: (context) => Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.6),
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.menu, color: Color(0xFF00FF88)),
+                            onPressed: () => Scaffold.of(context).openDrawer(),
                           ),
                         ),
                       ),
                       Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
                           color: Colors.black.withOpacity(0.6),
-                          shape: BoxShape.circle,
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        child: IconButton(
-                          icon: const Icon(Icons.logout, color: Colors.white),
-                          onPressed: () async {
-                             await authService.signOut();
-                          },
+                        child: Row(
+                          children: [
+                            const Icon(Icons.circle, color: Color(0xFF00FF88), size: 12),
+                            const SizedBox(width: 8),
+                            Text(
+                              authService.currentUser?.email?.split('@')[0] ?? 'Runner',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -169,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildStat('DIST', '${locationService.distance.toStringAsFixed(2)} km'),
+                        _buildStat('DIST', '${locationService.distanceKm.toStringAsFixed(2)} km'),
                         _buildStat('TIME', locationService.formattedTime),
                         _buildStat('PACE', '${locationService.pace.toStringAsFixed(1)} m/km'),
                       ],
@@ -187,57 +248,33 @@ class _HomeScreenState extends State<HomeScreen> {
             right: 0,
             child: Center(
               child: GestureDetector(
-                onTap: () async {
-                  if (locationService.isTracking) {
-                    // Stop Run Logic
-                    locationService.stopTracking();
-                    
-                    // Show Summary & Save
-                    final dist = locationService.distanceMeters;
-                    final dur = locationService.duration;
-                    final route = List<LatLng>.from(locationService.routeCoords);
-                    
-                    if (route.isNotEmpty && dist > 10) { // Only save if moved > 10m
-                        final user = authService.currentUser;
-                        if (user != null) {
-                          await _firestoreService.saveRun(user.uid, route, dist, dur);
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Run Saved! Territory Claimed!')),
-                            );
-                          }
-                        }
-                    } else {
-                       if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Run too short to save.')),
-                            );
-                       }
-                    }
-                  } else {
-                    locationService.startTracking();
-                  }
-                },
+                onTap: _isSaving ? null : () => _handleStartStop(context, locationService, authService),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   height: 80,
                   width: 80,
                   decoration: BoxDecoration(
-                    color: locationService.isTracking ? Colors.red : const Color(0xFF00FF88),
+                    color: _isSaving 
+                        ? Colors.grey 
+                        : (locationService.isTracking ? Colors.red : const Color(0xFF00FF88)),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: (locationService.isTracking ? Colors.red : const Color(0xFF00FF88)).withOpacity(0.5),
+                        color: (_isSaving 
+                            ? Colors.grey 
+                            : (locationService.isTracking ? Colors.red : const Color(0xFF00FF88))).withOpacity(0.5),
                         blurRadius: 20,
                         spreadRadius: 5,
                       ),
                     ],
                   ),
-                  child: Icon(
-                    locationService.isTracking ? Icons.stop : Icons.play_arrow,
-                    size: 40,
-                    color: Colors.black,
-                  ),
+                  child: _isSaving 
+                    ? const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Colors.black))
+                    : Icon(
+                        locationService.isTracking ? Icons.stop : Icons.play_arrow,
+                        size: 40,
+                        color: Colors.black,
+                      ),
                 ),
               ),
             ),
@@ -259,6 +296,76 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _handleStartStop(BuildContext context, LocationService locationService, AuthService authService) async {
+    if (locationService.isTracking) {
+      // 1. Capture data BEFORE stopping (or immediately after, since stop doesn't clear)
+      locationService.stopTracking();
+      
+      final distMeters = locationService.distanceMeters;
+      final duration = locationService.duration;
+      final route = List<LatLng>.from(locationService.routeCoords); // Copy list
+      
+      // 2. Validate
+      if (route.isEmpty || distMeters < 10) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Run too short to save (<10m).')),
+        );
+        return;
+      }
+
+      // 3. Save
+      setState(() => _isSaving = true);
+      
+      try {
+        final user = authService.currentUser;
+        if (user != null) {
+          final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+          await firestoreService.saveRun(user.uid, route, distMeters, duration);
+          
+          if (mounted) {
+            _showSummaryDialog(context, distMeters / 1000.0, duration);
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error saving run: $e')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isSaving = false);
+      }
+
+    } else {
+      await locationService.startTracking();
+    }
+  }
+
+  void _showSummaryDialog(BuildContext context, double distKm, Duration duration) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Run Completed!', style: TextStyle(color: Color(0xFF00FF88))),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Distance: ${distKm.toStringAsFixed(2)} km', style: const TextStyle(color: Colors.white)),
+            Text('Time: ${duration.inMinutes}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}', style: const TextStyle(color: Colors.white)),
+            const SizedBox(height: 10),
+            const Text('Territory Claimed!', style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Awesome', style: TextStyle(color: Color(0xFF00FF88))),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStat(String label, String value) {
     return Column(
       children: [
@@ -268,7 +375,7 @@ class _HomeScreenState extends State<HomeScreen> {
             color: Colors.white,
             fontWeight: FontWeight.bold,
             fontSize: 20,
-            fontFamily: 'RobotoMono', 
+            // Removed custom font family to avoid crashes if not loaded
           ),
         ),
         const SizedBox(height: 4),
@@ -283,193 +390,4 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
-  
-  final String _mapStyle = '''
-[
-  {
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#212121"
-      }
-    ]
-  },
-  {
-    "elementType": "labels.icon",
-    "stylers": [
-      {
-        "visibility": "off"
-      }
-    ]
-  },
-  {
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#757575"
-      }
-    ]
-  },
-  {
-    "elementType": "labels.text.stroke",
-    "stylers": [
-      {
-        "color": "#212121"
-      }
-    ]
-  },
-  {
-    "featureType": "administrative",
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#757575"
-      }
-    ]
-  },
-  {
-    "featureType": "administrative.country",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#9e9e9e"
-      }
-    ]
-  },
-  {
-    "featureType": "administrative.land_parcel",
-    "stylers": [
-      {
-        "visibility": "off"
-      }
-    ]
-  },
-  {
-    "featureType": "administrative.locality",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#bdbdbd"
-      }
-    ]
-  },
-  {
-    "featureType": "poi",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#757575"
-      }
-    ]
-  },
-  {
-    "featureType": "poi.park",
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#181818"
-      }
-    ]
-  },
-  {
-    "featureType": "poi.park",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#616161"
-      }
-    ]
-  },
-  {
-    "featureType": "poi.park",
-    "elementType": "labels.text.stroke",
-    "stylers": [
-      {
-        "color": "#1b1b1b"
-      }
-    ]
-  },
-  {
-    "featureType": "road",
-    "elementType": "geometry.fill",
-    "stylers": [
-      {
-        "color": "#2c2c2c"
-      }
-    ]
-  },
-  {
-    "featureType": "road",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#8a8a8a"
-      }
-    ]
-  },
-  {
-    "featureType": "road.arterial",
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#373737"
-      }
-    ]
-  },
-  {
-    "featureType": "road.highway",
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#3c3c3c"
-      }
-    ]
-  },
-  {
-    "featureType": "road.highway.controlled_access",
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#4e4e4e"
-      }
-    ]
-  },
-  {
-    "featureType": "road.local",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#616161"
-      }
-    ]
-  },
-  {
-    "featureType": "transit",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#757575"
-      }
-    ]
-  },
-  {
-    "featureType": "water",
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#000000"
-      }
-    ]
-  },
-  {
-    "featureType": "water",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#3d3d3d"
-      }
-    ]
-  }
-]
-''';
 }
