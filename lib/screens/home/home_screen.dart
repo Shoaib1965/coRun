@@ -7,6 +7,8 @@ import 'package:co_run/services/location_service.dart';
 import 'package:co_run/services/auth_service.dart';
 import 'package:co_run/services/firestore_service.dart';
 import 'package:co_run/utils/map_style.dart';
+import 'package:co_run/screens/stats/leaderboard_screen.dart';
+import 'package:co_run/screens/stats/history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -125,8 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('Leaderboard'),
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Navigate to Leaderboard
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Leaderboard coming soon!')));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const LeaderboardScreen()));
               },
             ),
             ListTile(
@@ -134,8 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: const Text('Run History'),
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Navigate to History
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('History coming soon!')));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen()));
               },
             ),
              ListTile(

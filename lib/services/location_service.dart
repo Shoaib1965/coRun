@@ -49,13 +49,7 @@ class LocationService with ChangeNotifier {
     };
   }
 
-  // Get current position stream for map camera updates even when not tracking run
-  Stream<Position> get positionStream => Geolocator.getPositionStream(
-    locationSettings: const LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 10,
-    ),
-  );
+  // Get current position stream removed (unused)
 
   Future<bool> requestPermission() async {
     LocationPermission permission = await Geolocator.checkPermission();
