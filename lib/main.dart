@@ -9,7 +9,11 @@ import 'package:co_run/utils/theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    print('Firebase initialization failed: $e. Running in Offline Mode.');
+  }
   runApp(const MyApp());
 }
 

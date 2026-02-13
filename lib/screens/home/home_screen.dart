@@ -9,6 +9,7 @@ import 'package:co_run/services/firestore_service.dart';
 import 'package:co_run/utils/map_style.dart';
 import 'package:co_run/screens/stats/leaderboard_screen.dart';
 import 'package:co_run/screens/stats/history_screen.dart';
+import 'package:co_run/widgets/liquid_button.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -32,7 +33,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Defer initialization to after build to access context/providers safely if needed
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _listenToTerritories();
       _locateUser();
@@ -42,7 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _listenToTerritories() {
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     final authService = Provider.of<AuthService>(context, listen: false);
-    final currentUserId = authService.currentUser?.uid;
+    final currentUserId = authService.currentUserId;
 
     _territoriesSubscription = firestoreService.territories.listen((territories) {
       if (!mounted) return;
@@ -50,15 +50,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _territoryPolylines = territories.map((t) {
           final isMine = t.userId == currentUserId;
           final color = isMine 
-              ? const Color(0xFF00FF88).withOpacity(0.6) // Neon Green for me
-              : _getUserColor(t.userId).withOpacity(0.4); // Hashed color for others
+              ? const Color(0xFF00FF88).withOpacity(0.6)
+              : _getUserColor(t.userId).withOpacity(0.4);
 
           return Polyline(
             polylineId: PolylineId(t.id),
             points: t.points,
             color: color,
             width: isMine ? 8 : 6,
-            zIndex: isMine ? 2 : 1, // Draw mine on top
+            zIndex: isMine ? 2 : 1,
             jointType: JointType.round,
             endCap: Cap.roundCap,
             startCap: Cap.roundCap,
@@ -70,7 +70,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Color _getUserColor(String userId) {
     final hash = userId.hashCode;
-    // Generate a consistent color from hash
     return Colors.primaries[hash % Colors.primaries.length];
   }
 
@@ -96,10 +95,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final locationService = Provider.of<LocationService>(context);
     final authService = Provider.of<AuthService>(context, listen: false);
 
-    // Combine current run polyline with claimed territories
     final allPolylines = {..._territoryPolylines, ...locationService.polylines};
 
-    // Auto-follow user when tracking
     if (locationService.isTracking && locationService.currentLocation != null) {
        _mapController?.animateCamera(
         CameraUpdate.newLatLng(locationService.currentLocation!),
@@ -196,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             const Icon(Icons.circle, color: Color(0xFF00FF88), size: 12),
                             const SizedBox(width: 8),
                             Text(
-                              authService.currentUser?.email?.split('@')[0] ?? 'Runner',
+                              authService.currentUserEmail?.split('@')[0] ?? 'Runner',
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                             ),
                           ],
@@ -241,42 +238,22 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // Start/Stop Button
+          // Liquid Start/Stop Button
           Positioned(
             bottom: 40,
             left: 0,
             right: 0,
             child: Center(
-              child: GestureDetector(
-                onTap: _isSaving ? null : () => _handleStartStop(context, locationService, authService),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  height: 80,
-                  width: 80,
-                  decoration: BoxDecoration(
-                    color: _isSaving 
-                        ? Colors.grey 
-                        : (locationService.isTracking ? Colors.red : const Color(0xFF00FF88)),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (_isSaving 
-                            ? Colors.grey 
-                            : (locationService.isTracking ? Colors.red : const Color(0xFF00FF88))).withOpacity(0.5),
-                        blurRadius: 20,
-                        spreadRadius: 5,
-                      ),
-                    ],
+              child: _isSaving 
+                ? const SizedBox(
+                    width: 80, height: 80, 
+                    child: Center(child: CircularProgressIndicator(color: Color(0xFF00FF88)))
+                  )
+                : LiquidButton(
+                    size: 90, // Slightly larger
+                    isRunning: locationService.isTracking,
+                    onTap: () => _handleStartStop(context, locationService, authService),
                   ),
-                  child: _isSaving 
-                    ? const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Colors.black))
-                    : Icon(
-                        locationService.isTracking ? Icons.stop : Icons.play_arrow,
-                        size: 40,
-                        color: Colors.black,
-                      ),
-                ),
-              ),
             ),
           ),
           
@@ -298,29 +275,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _handleStartStop(BuildContext context, LocationService locationService, AuthService authService) async {
     if (locationService.isTracking) {
-      // 1. Capture data BEFORE stopping (or immediately after, since stop doesn't clear)
       locationService.stopTracking();
       
       final distMeters = locationService.distanceMeters;
       final duration = locationService.duration;
-      final route = List<LatLng>.from(locationService.routeCoords); // Copy list
+      final route = List<LatLng>.from(locationService.routeCoords);
       
-      // 2. Validate
       if (route.isEmpty || distMeters < 10) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Run too short to save (<10m).')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Run too short to save (<10m).')),
+          );
+        }
         return;
       }
 
-      // 3. Save
       setState(() => _isSaving = true);
       
       try {
-        final user = authService.currentUser;
-        if (user != null) {
+        final userId = authService.currentUserId;
+        if (userId != null) {
           final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-          await firestoreService.saveRun(user.uid, route, distMeters, duration);
+          await firestoreService.saveRun(userId, route, distMeters, duration);
           
           if (mounted) {
             _showSummaryDialog(context, distMeters / 1000.0, duration);
@@ -375,7 +351,6 @@ class _HomeScreenState extends State<HomeScreen> {
             color: Colors.white,
             fontWeight: FontWeight.bold,
             fontSize: 20,
-            // Removed custom font family to avoid crashes if not loaded
           ),
         ),
         const SizedBox(height: 4),

@@ -4,11 +4,34 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter/material.dart';
 
 class FirestoreService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  FirebaseFirestore? _db;
+  bool _isOffline = false;
+
+  // Mock Data
+  final List<Territory> _mockRuns = [];
+
+  FirestoreService() {
+    try {
+      _db = FirebaseFirestore.instance;
+    } catch (e) {
+      print('FirestoreService running in Offline Mode');
+      _isOffline = true;
+    }
+  }
 
   // Save completed run
   Future<void> saveRun(String userId, List<LatLng> route, double distance, Duration duration) async {
     if (route.isEmpty) return;
+
+    if (_isOffline) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      _mockRuns.add(Territory(
+        id: 'mock_run_${DateTime.now().millisecondsSinceEpoch}',
+        userId: userId,
+        points: route,
+      ));
+      return;
+    }
 
     try {
       // Convert to simple map list for Firestore
@@ -17,7 +40,7 @@ class FirestoreService {
         'lng': p.longitude
       }).toList();
 
-      await _db.collection('runs').add({
+      await _db!.collection('runs').add({
         'userId': userId,
         'timestamp': FieldValue.serverTimestamp(),
         'distance': distance,
@@ -26,7 +49,7 @@ class FirestoreService {
       });
 
       // Update aggregate stats
-      await _db.collection('users').doc(userId).set({
+      await _db!.collection('users').doc(userId).set({
         'totalDistance': FieldValue.increment(distance),
         'runCount': FieldValue.increment(1),
         'lastActive': FieldValue.serverTimestamp(),
@@ -39,7 +62,14 @@ class FirestoreService {
 
   // Get recent territories (runs)
   Stream<List<Territory>> get territories {
-    return _db.collection('runs')
+    if (_isOffline) {
+      // Return a stream that emits current mock runs and updates when saveRun happens?
+      // Simple behavior: just emit once or fake it.
+      // Better: Use a StreamController if needed, but for now just return mock list.
+      return Stream.value(_mockRuns);
+    }
+
+    return _db!.collection('runs')
         .orderBy('timestamp', descending: true)
         .limit(50) 
         .snapshots()
